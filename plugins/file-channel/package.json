@@ -1,6 +1,5 @@
 {
   "name": "claude-channel-file",
-  "version": "0.1.0",
   "license": "MIT",
   "type": "module",
   "bin": "./server.ts",

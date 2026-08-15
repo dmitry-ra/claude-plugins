@@ -337,18 +337,21 @@ test('a permission request before any channel message is left to the harness, no
   expect(readFileSync(join(root, 'plugin.log'), 'utf8')).toContain('no channel message yet')
 }, 15000)
 
-test('permission fail-closed: no control plane -> terminal deny, no request appended (I15)', async () => {
+test('a channel without control/ is no delegate: the prompt is left to the harness (I15)', async () => {
   const root = mkRoot(); const dir = mkChannel(root, 'main', ['inbox.txt'])   // no control/ -> not a delegate
   const proc = spawn(root, {}, 'pipe'); const send = driver(proc)
   await poll(readJson(join(dir, 'inbox.txt.state'), (o) => o.read_offset === 0))
-  appendFileSync(join(dir, 'inbox.txt'), 'hi\n')                 // injected: the deny below is the delegate check, not a missing active channel
+  appendFileSync(join(dir, 'inbox.txt'), 'hi\n')                 // traffic, so silence below is the delegate rule, not the "no message yet" one
   await poll(readJson(join(dir, 'inbox.txt.state'), (o) => o.message_id === 1))
   send({ jsonrpc: '2.0', method: 'notifications/claude/channel/permission_request', params: { request_id: 'abcde', tool_name: 'Bash', description: 'do x', input_preview: 'do x' } })
   await proc.stdin.flush()
   await Bun.sleep(600); proc.kill()
   const out = await new Response(proc.stdout).text()
-  expect(out).toContain('"behavior":"deny"')
+  // Answering at all would refuse every tool call for the rest of the session -
+  // including this plugin's own reply, which is the whole point of the channel.
+  expect(out).not.toContain('notifications/claude/channel/permission"')
   expect(existsSync(join(dir, 'control', 'requests.jsonl'))).toBe(false)
+  expect(readFileSync(join(root, 'plugin.log'), 'utf8')).toContain('not a permission delegate')
 }, 15000)
 
 // POSIX-only, for the same reason as the containment test above: chmod 0o200 on

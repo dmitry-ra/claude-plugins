@@ -180,11 +180,16 @@ never share a file with application messages:
 
 First verdict wins; a later verdict for a closed id is ignored, and a verdict in
 another channel's file never resolves this channel's request. A malformed verdict
-leaves the prompt pending - it can never produce an allow. Once channel traffic has
-started, a request is denied outright when it cannot be routed: the active channel
-is no delegate, or its `verdicts.jsonl` exists but cannot be read. An absent
+leaves the prompt pending - it can never produce an allow. An absent
 `verdicts.jsonl` is the benign case - the operator may still create it - and leaves
-the request pending.
+the request pending. A request is denied outright in one case only: the channel is
+a delegate whose `verdicts.jsonl` exists but cannot be read, so no verdict can ever
+arrive.
+
+**A channel without `control/` is not a delegate, and the plugin answers nothing
+for it.** The prompt reaches you in the terminal, as it would for any other tool.
+This is the default: creating `control/` is how you hand permissions to whatever
+drives the session, and until you do, they stay yours.
 
 **Until the first channel message of a session, the plugin answers nothing.** The
 harness relays every permission prompt here, including ones from turns you typed
