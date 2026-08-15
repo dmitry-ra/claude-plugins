@@ -56,20 +56,46 @@ claude plugin marketplace add dmitry-ra/claude-plugins
 claude plugin install file-channel@dmitry-lab
 ```
 
-Channels are not loaded by default. For local development:
+Channels are off by default and gated twice, both in managed settings
+(`/etc/claude-code/managed-settings.json`):
+
+```json
+{
+  "channelsEnabled": true,
+  "allowedChannelPlugins": [
+    { "marketplace": "dmitry-lab", "plugin": "file-channel" }
+  ]
+}
+```
+
+Then start a session with the channel loaded:
 
 ```
-claude --dangerously-load-development-channels plugin:file-channel@dmitry-lab
+claude --channels plugin:file-channel@dmitry-lab
 ```
 
-For a non-development load pass the channel through `--channels`; a non-first-party
-channel may also require `allowedChannelPlugins` in managed settings.
+It confirms at startup: `messages from plugin:file-channel@dmitry-lab inject
+directly in this session`. Without `channelsEnabled` it says the opposite -
+`Inbound messages will be silently dropped` - while the plugin still starts, takes
+its locks and logs `message_injected`, because the drop happens past the plugin.
 
-Two deployment traps, neither the plugin's doing:
+`--dangerously-load-development-channels` takes the same argument and skips the
+allowlist. That is for a working tree you are editing, not for an installed plugin,
+and it warns accordingly.
 
-- **The MCP server does not start and nothing says why.** The bun installer writes
-  its `PATH` entry into `~/.bashrc`, which the login shell that spawns MCP servers
-  does not read. Symlink it: `ln -s ~/.bun/bin/bun ~/.local/bin/bun`.
+Three deployment traps, none the plugin's doing:
+
+- **`Executable not found in $PATH: "bun"`.** The MCP server inherits the
+  environment of whatever launched `claude`, not a login shell. The bun installer
+  writes its `PATH` entry into `~/.bashrc`, so bun is invisible when claude starts
+  from a non-login shell: `tmux new -d` over ssh, a systemd unit, a cron job. Launch
+  through a login shell (`bash -lc claude`), or put bun on the PATH of the starter.
+- **A failed start is remembered.** The failure is cached in
+  `<config>/mcp-needs-auth-cache.json`; later sessions report `failed` from that
+  cache without retrying, and no new file appears under
+  `~/.cache/claude-cli-nodejs/<project>/mcp-logs-plugin-file-channel-file/`. That
+  missing log is how you tell a cached verdict from a live one. Fix the cause, then
+  drop the cache entry.
 - **"plugin not installed" under the dev flag.** The flag registers the channel but
   installs nothing, so the MCP server never starts. Install first.
 
@@ -174,9 +200,11 @@ plugin - check the session's mode before concluding the relay is broken.
 - **A wedged channel cannot be detected.** The transport reports no delivery failure
   - a stdio `send` resolves on the write and has no reject path - and the harness
   drops events silently when the session has not loaded the channel. A channel
-  nothing reaches looks exactly like an idle one. The signals are indirect:
-  `size(inbox) - read_offset` growing without bound, and `inbox read failed` in
-  `plugin.log` for the read side.
+  nothing reaches looks exactly like an idle one, and `message_injected` in
+  `plugin.log` means the notification was sent, not that it arrived. The usual
+  cause is the gate above: no `channelsEnabled`, or the session started without
+  `--channels`. The other signal is indirect: `size(inbox) - read_offset` growing
+  without bound, and `inbox read failed` for the read side.
 - **First start needs the network.** The server runs `bun install` before starting;
   a warm tree starts offline.
 
