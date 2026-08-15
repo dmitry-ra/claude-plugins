@@ -24,6 +24,7 @@ import { decodeInbox, encodeOutbox } from './format.ts'
 import { parseVerdict, formatRequest } from './permission.ts'
 import { buildRegistry, writeTarget, statePathFor, MAX_ATOMIC_APPEND, type ChannelDesc, type Format } from './registry.ts'
 import { makeLog, makeStderrLog, parseLevel, type Log } from './log.ts'
+import manifest from './.claude-plugin/plugin.json'
 
 // Must match the server key in .mcp.json; becomes the last segment of the
 // rendered `source` (plugin load -> "plugin:file-channel:file").
@@ -309,7 +310,8 @@ function handleVerdict(rt: ChannelRuntime, line: string): void {
 // ----- MCP server -----
 
 const mcp = new Server(
-  { name: SERVER_NAME, version: '0.0.1' },
+  // Read, not repeated: the manifest is the one place a release bumps.
+  { name: SERVER_NAME, version: manifest.version },
   {
     capabilities: { tools: {}, experimental: { 'claude/channel': {}, 'claude/channel/permission': {} } },
     instructions:
@@ -354,16 +356,19 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
 const toolError = (text: string) => ({ content: [{ type: 'text', text }], isError: true })
 const toolOk = (text: string) => ({ content: [{ type: 'text', text }] })
 
-function collectFields(args: Record<string, unknown>): Record<string, unknown> {
+// Reserved names are per tool: `allow_self` steers `send` only, so stripping it
+// from a `reply` would silently drop a field the caller meant as payload (§11).
+function collectFields(args: Record<string, unknown>, tool: string): Record<string, unknown> {
+  const reserved = tool === 'send' ? ['channel', 'text', 'allow_self'] : ['channel', 'text']
   const fields: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(args)) if (k !== 'channel' && k !== 'text' && k !== 'allow_self') fields[k] = v
+  for (const [k, v] of Object.entries(args)) if (!reserved.includes(k)) fields[k] = v
   return fields
 }
 
 mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
   const args = (req.params.arguments ?? {}) as Record<string, unknown>
   const channel = typeof args.channel === 'string' ? args.channel : ''
-  const fields = collectFields(args)
+  const fields = collectFields(args, req.params.name)
   try {
     if (req.params.name === 'reply' || req.params.name === 'send') {
       if (!channel) return toolError(`${req.params.name} requires a channel`)
@@ -459,9 +464,11 @@ for (const desc of registry.values()) {
   // this channel and every channel after it unserved, with the session looking
   // healthy.
   const inbox = desc.inbox
+  let held: { release: () => void } | null = null
   try {
     const lock = acquireReaderLock(desc.dir)
     if (!lock.ok) { log({ level: 'warn', event: 'lock_contended', channel: desc.id }); continue }
+    held = lock
     log({ level: 'info', event: 'lock_acquired', channel: desc.id })
 
     const inboxPath = inbox.path
@@ -483,11 +490,17 @@ for (const desc of registry.values()) {
     setInterval(() => void pump(rt), POLL_MS)
 
     if (rt.isDelegate) {
-      rt.verdictOffset = existsSync(rt.verdictsPath) ? statSync(rt.verdictsPath).size : 0   // session-scoped: tail from end (§14)
-      try { if (existsSync(rt.verdictsPath)) watch(rt.verdictsPath, () => pumpVerdicts(rt)) } catch {}
+      // One stat, not exists-then-stat: the pair raced, and losing that race threw
+      // past the interval below. That left a delegate whose verdicts nothing reads,
+      // so requests would append and hang for the session. Absent file: tail from 0.
+      try { rt.verdictOffset = statSync(rt.verdictsPath).size } catch { rt.verdictOffset = 0 }
+      try { watch(rt.verdictsPath, () => pumpVerdicts(rt)) } catch {}
       setInterval(() => pumpVerdicts(rt), POLL_MS)
     }
   } catch (err) {
+    // The lock outlives a failed setup otherwise: this process would hold a channel
+    // it does not serve, and no other instance could take it until we exit.
+    if (held && !runtimes.has(desc.id)) held.release()
     log({ level: 'error', event: 'error', channel: desc.id, detail: { reason: 'channel setup failed; skipped', message: errText(err) } })
   }
 }

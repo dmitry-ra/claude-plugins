@@ -15,4 +15,7 @@ test('parseState: a record missing either field, or not JSON, is null -> seek to
   // unusable state must fall back to "start at the end" rather than reach it.
   expect(parseState('{"read_offset":-1,"message_id":0}')).toBeNull()
   expect(parseState('{"read_offset":1.5,"message_id":0}')).toBeNull()
+  // Past 2^53 arithmetic is inexact, so a counter there repeats ids instead of
+  // advancing. That is unusable state, not a large number.
+  expect(parseState('{"read_offset":0,"message_id":9007199254740993}')).toBeNull()
 })

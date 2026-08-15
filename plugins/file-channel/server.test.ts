@@ -2,6 +2,7 @@ import { test, expect } from 'bun:test'
 import { mkdtempSync, mkdirSync, existsSync, readFileSync, writeFileSync, appendFileSync, chmodSync } from 'fs'
 import { tmpdir, EOL } from 'os'
 import { join } from 'path'
+import manifest from './.claude-plugin/plugin.json'
 
 // Channels are root subdirectories enumerated at startup and declared by the
 // files they hold, so a test creates the directory AND its inbox before spawning.
@@ -137,13 +138,14 @@ test('reply creates the outbox mirroring the declared format, or text when none 
   mkChannel(root, 'json-chan', ['inbox.jsonl'])                  // outbox absent: mirrors the inbox
   mkChannel(root, 'bare')                                        // declares nothing: text
   const proc = spawn(root); const send = driver(proc)
-  send(call(2, 'reply', { channel: 'json-chan', text: 'pong', priority: 5 }))
+  // allow_self steers `send`; to `reply` it is an ordinary field and must survive.
+  send(call(2, 'reply', { channel: 'json-chan', text: 'pong', priority: 5, allow_self: true }))
   send(call(3, 'reply', { channel: 'bare', text: 'plain' }))
   await proc.stdin.flush()
   const a = await poll(readNonEmpty(join(root, 'json-chan', 'outbox.jsonl')))
   const b = await poll(readNonEmpty(join(root, 'bare', 'outbox.txt')))
   proc.kill()
-  expect(a).toBe('{"text":"pong","priority":5}' + EOL)
+  expect(a).toBe('{"text":"pong","priority":5,"allow_self":true}' + EOL)
   expect(b).toBe('plain' + EOL)
 }, 15000)
 
@@ -160,6 +162,9 @@ test('reply rejects each malformed call with the reason that fits it (I8/I11)', 
   await proc.stdin.flush()
   await Bun.sleep(700); proc.kill()
   const out = await new Response(proc.stdout).text()
+  // The version the server announces is the manifest's, not a second copy of it
+  // that a release can forget to bump.
+  expect(out).toContain(`"version":"${manifest.version}"`)
   expect(errorFor(out, 2)).toMatch(/structured fields require a jsonl/)
   expect(errorFor(out, 3)).toMatch(/must not contain a line terminator/)
   expect(errorFor(out, 4)).toMatch(/requires a text field/)

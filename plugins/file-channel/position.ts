@@ -24,9 +24,11 @@ export function parseState(raw: string): State | null {
     const o = JSON.parse(raw)
     // Non-negative integers only. §4 invites the operator to hand-edit this file,
     // and a negative or fractional offset is rejected by the read syscall itself —
-    // treating it as unusable state starts safely from the end instead.
-    if (o && Number.isInteger(o.read_offset) && o.read_offset >= 0
-          && Number.isInteger(o.message_id) && o.message_id >= 0) {
+    // treating it as unusable state starts safely from the end instead. Beyond 2^53
+    // arithmetic stops being exact, so a counter there repeats ids instead of
+    // advancing: unusable state too, not a large number.
+    if (o && Number.isSafeInteger(o.read_offset) && o.read_offset >= 0
+          && Number.isSafeInteger(o.message_id) && o.message_id >= 0) {
       return { read_offset: o.read_offset, message_id: o.message_id }
     }
   } catch {}
