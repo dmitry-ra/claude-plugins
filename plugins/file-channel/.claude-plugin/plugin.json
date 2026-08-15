@@ -1,0 +1,6 @@
+{
+  "name": "file-channel",
+  "description": "File-backed channel for Claude Code. An external process appends lines to a channel inbox; the plugin injects them into the live session, and Claude writes back to the outbox. Composable into pipelines.",
+  "version": "0.1.0",
+  "keywords": ["channel", "file", "pipeline", "mcp"]
+}

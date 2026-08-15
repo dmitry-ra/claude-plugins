@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "dmitry-lab",
+  "description": "Original Claude Code plugins.",
+  "owner": {
+    "name": "Dmitry Razumikhin",
+    "email": "dmitry.razumikhin@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "file-channel",
+      "description": "File-backed channel for Claude Code. An external process appends lines to a channel inbox; the plugin injects them into the live session, and Claude writes back to the outbox. Composable into pipelines.",
+      "category": "productivity",
+      "source": "./plugins/file-channel"
+    }
+  ]
+}
