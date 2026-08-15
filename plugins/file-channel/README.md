@@ -56,7 +56,7 @@ to resolve in the PATH of whatever launches `claude`. Install it first:
 
 ```
 curl -fsSL https://bun.sh/install | bash
-exec $SHELL -l          # or open a new terminal
+exec "$SHELL" -l        # or open a new terminal
 bun --version
 ```
 
@@ -72,7 +72,7 @@ claude plugin install file-channel@dmitry-lab
 
 Channels are off by default and gated twice, both in managed settings:
 
-| | |
+| OS | Path |
 |---|---|
 | Linux | `/etc/claude-code/managed-settings.json` |
 | macOS | `/Library/Application Support/ClaudeCode/managed-settings.json` |
