@@ -51,13 +51,32 @@ reader, not the writer; `type` is `text` or `json`.
 
 ## Install and load
 
+The MCP server is started as `bun run ...`, so bun has to be installed **and** has
+to resolve in the PATH of whatever launches `claude`. Install it first:
+
+```
+curl -fsSL https://bun.sh/install | bash
+exec "$SHELL" -l        # or open a new terminal
+bun --version
+```
+
+If bun is already on disk (`~/.bun/bin/bun`) but the command is not found, it was
+installed without touching your shell profile - add the directory to PATH instead
+of installing again. Put it where every shell reads it, not only interactive ones:
+`~/.zshenv` for zsh, `~/.bashrc` plus `~/.profile` for bash.
+
 ```
 claude plugin marketplace add dmitry-ra/claude-plugins
 claude plugin install file-channel@dmitry-lab
 ```
 
-Channels are off by default and gated twice, both in managed settings
-(`/etc/claude-code/managed-settings.json`):
+Channels are off by default and gated twice, both in managed settings:
+
+| OS | Path |
+|---|---|
+| Linux | `/etc/claude-code/managed-settings.json` |
+| macOS | `/Library/Application Support/ClaudeCode/managed-settings.json` |
+| Windows | `C:/Program Files/ClaudeCode/managed-settings.json` |
 
 ```json
 {
@@ -90,6 +109,7 @@ Three deployment traps, none the plugin's doing:
   writes its `PATH` entry into `~/.bashrc`, so bun is invisible when claude starts
   from a non-login shell: `tmux new -d` over ssh, a systemd unit, a cron job. Launch
   through a login shell (`bash -lc claude`), or put bun on the PATH of the starter.
+  Then clear the cache described next, or the fix looks like it did not work.
 - **A failed start is remembered.** The failure is cached in
   `<config>/mcp-needs-auth-cache.json`; later sessions report `failed` from that
   cache without retrying, and no new file appears under
