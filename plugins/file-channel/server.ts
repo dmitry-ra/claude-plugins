@@ -81,7 +81,6 @@ interface ChannelRuntime {
   messageId: number
   openReqs: Set<string>          // permission request_ids open in THIS channel (§14)
   isDelegate: boolean            // control/ present at startup
-  lockWon: boolean
   statePath: string
   controlDir: string
   requestsPath: string
@@ -97,6 +96,7 @@ const runtimes = new Map<string, ChannelRuntime>()
 let activeChannel: ChannelRuntime | null = null   // most-recent injection target (§14); set only by inject
 let channelSeen = false                           // has anything arrived through a channel this session?
 let passthroughLogged = false
+let nonDelegateLogged = false
 
 function hasControl(dir: string): boolean { try { return statSync(join(dir, 'control')).isDirectory() } catch { return false } }
 function loadState(p: string): State | null { try { return parseState(readFileSync(p, 'utf8')) } catch { return null } }
@@ -419,13 +419,20 @@ mcp.fallbackNotificationHandler = async (n) => {
     return
   }
   const rt = activeChannel
-  const unroutable =
-    !rt || !rt.lockWon || !rt.isDelegate ? 'no usable control plane'
-    : verdictsUnreadable(rt) ? 'verdicts file present but unreadable'
-    : null
-  if (unroutable) {                                               // not routable -> terminal deny
+  // control/ is how an operator opts in to plugin-mediated permissions; without it
+  // there is nothing to arbitrate and the prompt belongs to the human, exactly as
+  // before the first channel message. Denying here refused every tool call for the
+  // rest of the session, the plugin's own reply included (§14).
+  if (!rt || !rt.isDelegate) {
+    if (!nonDelegateLogged) {
+      log({ level: 'info', event: 'permission_request', channel: rt?.desc.id, detail: { request_id: id, reason: 'not answered: channel is not a permission delegate' } })
+      nonDelegateLogged = true
+    }
+    return
+  }
+  if (verdictsUnreadable(rt)) {                                   // opted in but unanswerable -> terminal deny
     void notify({ method: 'notifications/claude/channel/permission', params: { request_id: id, behavior: 'deny' } })
-    log({ level: 'info', event: 'permission_verdict', channel: rt?.desc.id, detail: { request_id: id, behavior: 'deny', reason: `fail-closed: ${unroutable}` } })
+    log({ level: 'info', event: 'permission_verdict', channel: rt.desc.id, detail: { request_id: id, behavior: 'deny', reason: 'fail-closed: verdicts file present but unreadable' } })
     return
   }
   const line = formatRequest(
@@ -478,7 +485,7 @@ for (const desc of registry.values()) {
     const rt: ChannelRuntime = {
       desc, inboxPath, inboxFormat: inbox.format,
       offset: start.offset, scan: start.offset, messageId: start.messageId,
-      openReqs: new Set(), isDelegate: hasControl(desc.dir), lockWon: true,
+      openReqs: new Set(), isDelegate: hasControl(desc.dir),
       statePath, controlDir, requestsPath: join(controlDir, 'requests.jsonl'), verdictsPath: join(controlDir, 'verdicts.jsonl'),
       verdictOffset: 0, pumping: false, rerun: false,
     }
