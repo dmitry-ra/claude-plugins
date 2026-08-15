@@ -87,7 +87,14 @@ Channels are off by default and gated twice, both in managed settings:
 }
 ```
 
-Then start a session with the channel loaded:
+Create a channel. A channel is a directory with an `inbox` in it, and it has to
+exist before the session starts - channels are enumerated once, at startup:
+
+```
+mkdir -p ~/.claude/channels/file/main && touch ~/.claude/channels/file/main/inbox.txt
+```
+
+Start a session with the channel loaded, and leave it running:
 
 ```
 claude --channels plugin:file-channel@dmitry-lab
@@ -97,6 +104,17 @@ It confirms at startup: `messages from plugin:file-channel@dmitry-lab inject
 directly in this session`. Without `channelsEnabled` it says the opposite -
 `Inbound messages will be silently dropped` - while the plugin still starts, takes
 its locks and logs `message_injected`, because the drop happens past the plugin.
+
+Check it end to end from a second terminal:
+
+```
+echo 'reply to this' >> ~/.claude/channels/file/main/inbox.txt
+cat ~/.claude/channels/file/main/outbox.txt
+```
+
+The line arrives in the session as a `<channel>` message. The first `reply` raises
+the ordinary permission prompt - approve it, or choose always-allow. The plugin
+answers no prompt on your behalf unless you created `control/` (see below).
 
 `--dangerously-load-development-channels` takes the same argument and skips the
 allowlist. That is for a working tree you are editing, not for an installed plugin,
