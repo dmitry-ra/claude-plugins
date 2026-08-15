@@ -52,18 +52,28 @@ reader, not the writer; `type` is `text` or `json`.
 ## Install and load
 
 The MCP server is started as `bun run ...`, so bun has to be installed **and** has
-to resolve in the PATH of whatever launches `claude`. Install it first:
+to resolve in the PATH of whatever launches `claude`. Install it first - on a
+minimal Linux image the installer stops with `unzip is required to install bun`:
 
 ```
+sudo apt-get install -y unzip        # minimal images ship without it; macOS has it
 curl -fsSL https://bun.sh/install | bash
-exec "$SHELL" -l        # or open a new terminal
-bun --version
 ```
 
-If bun is already on disk (`~/.bun/bin/bun`) but the command is not found, it was
-installed without touching your shell profile - add the directory to PATH instead
-of installing again. Put it where every shell reads it, not only interactive ones:
-`~/.zshenv` for zsh, `~/.bashrc` plus `~/.profile` for bash.
+The installer appends its `PATH` line to `~/.bashrc`, which on Ubuntu is not
+enough: `.bashrc` returns at the top when the shell is not interactive, and the
+line sits below that guard. MCP servers are started from a non-interactive shell,
+so it never runs - and neither `exec $SHELL -l` nor `bash -lc` changes that. Put
+the entry where every shell reads it:
+
+```
+echo 'export PATH="$HOME/.bun/bin:$PATH"' >> ~/.profile      # bash
+echo 'export PATH="$HOME/.bun/bin:$PATH"' >> ~/.zshenv       # zsh
+bash -lc 'bun --version'             # the check that matters: no interactive shell
+```
+
+If bun is already on disk (`~/.bun/bin/bun`) but the command is not found, that is
+this same guard - fix the PATH rather than installing again.
 
 ```
 claude plugin marketplace add dmitry-ra/claude-plugins
@@ -123,11 +133,11 @@ and it warns accordingly.
 Three deployment traps, none the plugin's doing:
 
 - **`Executable not found in $PATH: "bun"`.** The MCP server inherits the
-  environment of whatever launched `claude`, not a login shell. The bun installer
-  writes its `PATH` entry into `~/.bashrc`, so bun is invisible when claude starts
-  from a non-login shell: `tmux new -d` over ssh, a systemd unit, a cron job. Launch
-  through a login shell (`bash -lc claude`), or put bun on the PATH of the starter.
-  Then clear the cache described next, or the fix looks like it did not work.
+  environment of whatever launched `claude`. That environment is thin when claude
+  is started by something other than your terminal - `tmux new -d` over ssh, a
+  systemd unit, a cron job - and a login shell is not the cure: see the install
+  section for why `~/.bashrc` does not run there. Fix the PATH of the starter, then
+  clear the cache described next, or the fix looks like it did not work.
 - **A failed start is remembered.** The failure is cached in
   `<config>/mcp-needs-auth-cache.json`; later sessions report `failed` from that
   cache without retrying, and no new file appears under
