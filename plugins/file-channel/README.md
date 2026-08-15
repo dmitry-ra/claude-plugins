@@ -80,7 +80,8 @@ claude plugin marketplace add dmitry-ra/claude-plugins
 claude plugin install file-channel@dmitry-lab
 ```
 
-Channels are off by default and gated twice, both in managed settings:
+A channel from outside the first-party marketplace has to be allowlisted in managed
+settings, which only an administrator can write:
 
 | OS | Path |
 |---|---|
@@ -90,12 +91,18 @@ Channels are off by default and gated twice, both in managed settings:
 
 ```json
 {
-  "channelsEnabled": true,
   "allowedChannelPlugins": [
     { "marketplace": "dmitry-lab", "plugin": "file-channel" }
   ]
 }
 ```
+
+Add `"channelsEnabled": true` beside it only if the session says to. Channels also
+pass an organization policy check, and when that check refuses, the session says
+`blocked by org policy` and `Inbound messages will be silently dropped`; the key is
+the local override for it. A session that cannot reach the account at all - an
+expired login, `Not logged in` in the status line - fails the same check, and there
+the override treats a symptom: log in instead.
 
 Create a channel. A channel is a directory with an `inbox` in it, and it has to
 exist before the session starts - channels are enumerated once, at startup:
@@ -111,9 +118,9 @@ claude --channels plugin:file-channel@dmitry-lab
 ```
 
 It confirms at startup: `messages from plugin:file-channel@dmitry-lab inject
-directly in this session`. Without `channelsEnabled` it says the opposite -
-`Inbound messages will be silently dropped` - while the plugin still starts, takes
-its locks and logs `message_injected`, because the drop happens past the plugin.
+directly in this session`. If it says the opposite - `Inbound messages will be
+silently dropped` - the plugin still starts, takes its locks and logs
+`message_injected`, because the drop happens past it, in the harness.
 
 Check it end to end from a second terminal:
 
@@ -255,8 +262,8 @@ plugin - check the session's mode before concluding the relay is broken.
   drops events silently when the session has not loaded the channel. A channel
   nothing reaches looks exactly like an idle one, and `message_injected` in
   `plugin.log` means the notification was sent, not that it arrived. The usual
-  cause is the gate above: no `channelsEnabled`, or the session started without
-  `--channels`. The other signal is indirect: `size(inbox) - read_offset` growing
+  cause is the gate above: the session started without `--channels`, or its startup
+  said so. The other signal is indirect: `size(inbox) - read_offset` growing
   without bound, and `inbox read failed` for the read side.
 - **First start needs the network.** The server runs `bun install` before starting;
   a warm tree starts offline.
